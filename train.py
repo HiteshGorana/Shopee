@@ -5,6 +5,7 @@
 # @Version : 0.0
 import torch
 from tqdm import tqdm
+from loss import ArcFaceLoss
 
 
 def train_epoch(model, data_iter, optimizer, criterion):
@@ -13,12 +14,11 @@ def train_epoch(model, data_iter, optimizer, criterion):
     train_loss = []
     bar = tqdm(data_iter)
     for data, label in bar:
-        data, label = data.cuda(), label.cuda()
         optimizer.zero_grad()
         # Casts operations to mixed precision
         with torch.cuda.amp.autocast():
             output = model(data)
-            loss = criterion(output, label)
+            loss = criterion(ArcFaceLoss(), label, output)
 
         # Scales the loss, and calls backward()
         # to create scaled gradients
@@ -45,10 +45,9 @@ def valid_epoch(model, data_iter, criterion, output_=True):
     with torch.no_grad():
         bar = tqdm(data_iter)
         for data, label in bar:
-            data, label = data.cuda(), label.cuda()
             output = model(data)
             embeddings.append(output.detach().cpu().numpy())
-            loss = criterion(output, label)
+            loss = criterion(ArcFaceLoss(), label, output)
             loss_np = loss.detach().cpu().numpy()
 
             valid_loss.append(loss_np)
