@@ -2,14 +2,15 @@ import random
 
 import numpy as np
 import pandas as pd
-from torch.utils.data import DataLoader
 import torch
+from sklearn.model_selection import GroupKFold
+from torch.utils.data import DataLoader
 
-from models import Net
-from train import train_epoch, valid_epoch
+from config import args
 from data import Shopee, collate_fn
 from loss import loss_fn
-from config import args
+from models import Net
+from train import train_epoch
 
 
 def set_seed(seed=0):
@@ -41,9 +42,16 @@ if __name__ == '__main__':
     tmp = train.groupby('image_phash').posting_id.agg('unique').to_dict()
     train['oof'] = train.image_phash.map(tmp)
     train['target'] = train['label_group'].factorize()[0]
+    train['fold'] = -1
+    sgk = GroupKFold(n_splits=2)
+    for n, (tdx, vdx) in enumerate(sgk.split(train, train['target'], groups=train['label_group'])):
+        train['fold'].iloc[vdx] = n
+    data_train_ = Shopee(train[train['fold'] == 0].reset_index(drop=True), aug=args.train_args)
+    data = DataLoader(data_train_, batch_size=128, collate_fn=collate_fn, num_workers=2)
 
-    data_ = Shopee(train, aug=args.train_args)
-    data = DataLoader(data_, batch_size=3, collate_fn=collate_fn)
+    data_valid_ = Shopee(train[train['fold'] == 1].reset_index(drop=True), aug=args.train_args)
+    data_valid = DataLoader(data_valid_, batch_size=128, collate_fn=collate_fn, num_workers=2)
+
     model = Net(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     _ = train_epoch(model, data, optimizer, loss_fn)

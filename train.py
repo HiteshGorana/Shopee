@@ -45,11 +45,10 @@ def valid_epoch(model, data_iter, criterion, output_=True):
     with torch.no_grad():
         bar = tqdm(data_iter)
         for data, label in bar:
-            output = model(data)
-            embeddings.append(output.detach().cpu().numpy())
-            loss = criterion(ArcFaceLoss(), label, output)
+            with torch.cuda.amp.autocast():
+                output = model(data)
+                loss = criterion(ArcFaceLoss(), label, output)
             loss_np = loss.detach().cpu().numpy()
-
             valid_loss.append(loss_np)
             smooth_loss = sum(valid_loss[-100:]) / min(len(valid_loss), 100)
             bar.set_description('loss: %.5f, smooth: %.5f' % (loss_np, smooth_loss))
