@@ -21,13 +21,26 @@ def collate_fn(batch):
     return input_dict, target_dict
 
 
+def submission_collate_fn(batch):
+    input_dict = {}
+    for key in ['input']:
+        input_dict[key] = torch.stack([b[key] for b in batch])
+    for key in ['idx']:
+        input_dict[key] = torch.stack([b[key] for b in batch]).long()
+    return input_dict,
+
+
 class Shopee(Dataset):
-    def __init__(self, df, aug=None, normalization='simple', img_size=256):
+    def __init__(self, df, aug=None, normalization='simple', img_size=256, test=False):
         self.df = df
         self.aug = aug
         self.normalization = normalization
         self.img_size = img_size
-        self.path = '../input/shopee-product-matching/train_images/'
+        self.test = test
+        if self.test:
+            self.path = '../input/shopee-product-matching/test_images/'
+        else:
+            self.path = '../input/shopee-product-matching/train_images/'
         self.eps = 1e-6
 
     def __getitem__(self, idx):
@@ -43,11 +56,13 @@ class Shopee(Dataset):
         img = img.astype(np.float32)
         if self.normalization:
             img = self.normalize_img(img)
-        target = torch.tensor(self.df.iloc[idx].target)
+        if not self.test:
+            target = torch.tensor(self.df.iloc[idx].target)
         tensor = self.to_torch_tensor(img)
-        feature_dict = {'idx': torch.tensor(idx).long(),
-                        'input': tensor,
-                        'target': target.float()}
+        if self.test:
+            feature_dict = dict(idx=torch.tensor(idx).long(), input=tensor)
+        else:
+            feature_dict = dict(idx=torch.tensor(idx).long(), input=tensor, target=target.float())
         return feature_dict
 
     def augment(self, img):

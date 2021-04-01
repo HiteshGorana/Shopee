@@ -54,3 +54,16 @@ def valid_epoch(model, data_iter, criterion, output_=True):
             bar.set_description('loss: %.5f, smooth: %.5f' % (loss_np, smooth_loss))
     if output_:
         return embeddings
+
+
+def submission_valid(model, data_iter):
+    model.eval()
+    embeddings = []
+    bar = tqdm(data_iter)
+    with torch.no_grad():
+        for data in bar:
+            with torch.cuda.amp.autocast():
+                output = model(data, get_embeddings=True)
+                embeddings.append(output['embeddings'].detach().cpu())
+    embeddings = torch.cat(embeddings).cpu().numpy()
+    return embeddings
