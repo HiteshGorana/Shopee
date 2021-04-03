@@ -2,3 +2,7 @@
 2. https://www.kaggle.com/coolcoder22/baseline-shopee
 3. https://www.kaggle.com/coolcoder22/investigation-shopee-prediction
 4. https://www.kaggle.com/coolcoder22/shopee-cv-understand
+
+
+# MODELS
+1. https://www.kaggle.com/coolcoder22/shopee-gluon-seresnext101-32x4d
