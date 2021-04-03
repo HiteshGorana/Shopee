@@ -1,0 +1,4 @@
+1. https://www.kaggle.com/coolcoder22/infrence
+2. https://www.kaggle.com/coolcoder22/baseline-shopee
+3. https://www.kaggle.com/coolcoder22/investigation-shopee-prediction
+4. https://www.kaggle.com/coolcoder22/shopee-cv-understand
