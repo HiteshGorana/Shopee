@@ -15,6 +15,7 @@ class args:
     n_classes = 11014
     pretrained_weights = None
     crop_size = 512
+    n_epochs = 10
     train_args = A.Compose([A.Resize(height=512, width=512, p=1.),
                             A.RandomCrop(height=crop_size, width=crop_size, p=1.),
                             A.HorizontalFlip(p=0.5),

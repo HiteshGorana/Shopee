@@ -10,7 +10,7 @@ from config import args
 from data import Shopee, collate_fn
 from loss import loss_fn
 from models import Net
-from train import train_epoch
+from train import train_epoch, GradualWarmupSchedulerV2
 
 
 def set_seed(seed=0):
@@ -51,7 +51,11 @@ if __name__ == '__main__':
 
     data_valid_ = Shopee(train[train['fold'] == 1].reset_index(drop=True), aug=args.train_args)
     data_valid = DataLoader(data_valid_, batch_size=128, collate_fn=collate_fn, num_workers=2)
-
     model = Net(args)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    _ = train_epoch(model, data, optimizer, loss_fn)
+    scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, args.n_epochs - 1)
+    scheduler_warmup = GradualWarmupSchedulerV2(optimizer, multiplier=10, total_epoch=1,
+                                                after_scheduler=scheduler_cosine)
+    for epoch in range(1, args.n_epochs):
+        scheduler_warmup.step(epoch - 1)
+        _ = train_epoch(model, data, optimizer, loss_fn)
