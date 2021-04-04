@@ -122,7 +122,7 @@ def train_epoch(model, data_iter, optimizer, criterion):
     return train_loss
 
 
-def valid_epoch(model, data_iter, criterion, output_=True):
+def valid_epoch(model, data_iter, criterion):
     model.eval()
     embeddings = []
     valid_loss = []
@@ -132,12 +132,13 @@ def valid_epoch(model, data_iter, criterion, output_=True):
             with torch.cuda.amp.autocast():
                 output = model(data)
                 loss = criterion(ArcFaceLoss(), label, output)
+            embeddings.append(output['embeddings'].detach().cpu())
             loss_np = loss.detach().cpu().numpy()
             valid_loss.append(loss_np)
             smooth_loss = sum(valid_loss[-100:]) / min(len(valid_loss), 100)
             bar.set_description('loss: %.5f, smooth: %.5f' % (loss_np, smooth_loss))
-    if output_:
-        return embeddings
+    embeddings = torch.cat(embeddings).cpu().numpy()
+    return valid_loss, embeddings
 
 
 def submission_valid(model, data_iter):
@@ -146,8 +147,7 @@ def submission_valid(model, data_iter):
     bar = tqdm(data_iter)
     with torch.no_grad():
         for data in bar:
-            with torch.cuda.amp.autocast():
-                output = model(data, get_embeddings=True)
-                embeddings.append(output['embeddings'].detach().cpu())
+            output = model(data, get_embeddings=True)
+            embeddings.append(output['embeddings'].detach().cpu())
     embeddings = torch.cat(embeddings).cpu().numpy()
     return embeddings

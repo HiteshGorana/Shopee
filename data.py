@@ -7,31 +7,32 @@ from torch.utils.data import Dataset
 import torch
 import numpy as np
 import cv2
+from config import args
 
 
 def collate_fn(batch):
     input_dict = {}
     target_dict = {}
     for key in ['input']:
-        input_dict[key] = torch.stack([b[key] for b in batch])
+        input_dict[key] = torch.stack([b[key] for b in batch]).to(args.device)
     for key in ['idx']:
         input_dict[key] = torch.stack([b[key] for b in batch]).long()
     for key in ['target']:
-        target_dict[key] = torch.stack([b[key] for b in batch]).long()
+        target_dict[key] = torch.stack([b[key] for b in batch]).to(args.device).long()
     return input_dict, target_dict
 
 
 def submission_collate_fn(batch):
     input_dict = {}
     for key in ['input']:
-        input_dict[key] = torch.stack([b[key] for b in batch])
+        input_dict[key] = torch.stack([b[key] for b in batch]).to(args.device)
     for key in ['idx']:
         input_dict[key] = torch.stack([b[key] for b in batch]).long()
     return input_dict,
 
 
 class Shopee(Dataset):
-    def __init__(self, df, aug=None, normalization='simple', img_size=256, test=False):
+    def __init__(self, df, aug=None, normalization=args.normalization, img_size=args.crop_size, test=False):
         self.df = df
         self.aug = aug
         self.normalization = normalization

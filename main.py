@@ -1,16 +1,16 @@
+import os
 import random
 
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import GroupKFold
 from torch.utils.data import DataLoader
 
 from config import args
 from data import Shopee, collate_fn
 from loss import loss_fn
 from models import Net
-from train import train_epoch, GradualWarmupSchedulerV2
+from train import train_epoch, valid_epoch, GradualWarmupSchedulerV2
 
 
 def set_seed(seed=0):
@@ -22,36 +22,28 @@ def set_seed(seed=0):
     torch.backends.cudnn.deterministic = True
 
 
-def _filter_columns(iterator: pd.DataFrame, string_: str):
-    if isinstance(iterator, pd.DataFrame):
-        iterator = iterator.columns
-    columns_ = []
-    for column in iterator:
-        if column.startswith(string_):
-            columns_.append(column)
-    return columns_
-
-
-def combine_predictions(row: pd.DataFrame, string: str = 'preds', cv: bool = False):
-    x = np.concatenate([row[column] for column in _filter_columns(row, string)])
-    return np.unique(x) if cv else ' '.join(np.unique(x))
-
-
 if __name__ == '__main__':
-    train = pd.read_csv('../input/shopee-product-matching/train.csv')
-    tmp = train.groupby('image_phash').posting_id.agg('unique').to_dict()
-    train['oof'] = train.image_phash.map(tmp)
-    train['target'] = train['label_group'].factorize()[0]
-    train['fold'] = -1
-    sgk = GroupKFold(n_splits=2)
-    for n, (tdx, vdx) in enumerate(sgk.split(train, train['target'], groups=train['label_group'])):
-        train['fold'].iloc[vdx] = n
-    data_train_ = Shopee(train[train['fold'] == 0].reset_index(drop=True), aug=args.train_args)
-    data = DataLoader(data_train_, batch_size=128, collate_fn=collate_fn, num_workers=2)
+    set_seed(args.SEED)
+    os.makedirs(args.output, exist_ok=True)
+    torch.multiprocessing.set_start_method('spawn')
+    train = pd.read_csv(args.train_fold)
+    if args.DEBUG:
+        train = train.sample(1000).reset_index(drop=True)
 
-    data_valid_ = Shopee(train[train['fold'] == 1].reset_index(drop=True), aug=args.train_args)
-    data_valid = DataLoader(data_valid_, batch_size=128, collate_fn=collate_fn, num_workers=2)
-    model = Net(args)
+    if args.weight:
+        val_counts = train.target.value_counts().sort_index().values
+        class_weights = 1 / np.log1p(val_counts)
+        class_weights = (class_weights / class_weights.sum()) * args.n_classes
+        class_weights = torch.tensor(class_weights, dtype=torch.float32)
+
+    data_train_ = Shopee(train[train['fold'] == 0].reset_index(drop=True), aug=args.train_args)
+    data = DataLoader(data_train_, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=args.num_workers)
+
+    data_valid_ = Shopee(train[train['fold'] == 1].reset_index(drop=True), aug=args.test_args)
+    data_valid = DataLoader(data_valid_, batch_size=args.batch_size_test, collate_fn=collate_fn,
+                            num_workers=args.num_workers)
+
+    model = Net(args).to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, args.n_epochs - 1)
     scheduler_warmup = GradualWarmupSchedulerV2(optimizer, multiplier=10, total_epoch=1,
@@ -59,3 +51,9 @@ if __name__ == '__main__':
     for epoch in range(1, args.n_epochs):
         scheduler_warmup.step(epoch - 1)
         _ = train_epoch(model, data, optimizer, loss_fn)
+        val_loss, embeddings = valid_epoch(model, data_valid, loss_fn)
+        np.save(f'valid_embeddings_{epoch}', embeddings)
+        print('#' * 22 + f' EPOCH : {epoch} ' + '#' * 22)
+        print(f'EPOCH : {epoch} VALID LOSS : {sum(val_loss) / len(val_loss)}')
+        print('#' * (22 * 2 + 11))
+        torch.save(model.state_dict(), f'../working/model_{epoch}.pth')

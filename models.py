@@ -8,6 +8,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.parameter import Parameter
+from config import args
 
 
 class ArcMarginProduct(nn.Module):
@@ -117,7 +118,7 @@ class Net(nn.Module):
             self.load_state_dict(torch.load(args.pretrained_weights, map_location='cpu'), strict=False)
             print('weights loaded from', args.pretrained_weights)
 
-    def forward(self, input_dict, get_embeddings=False, get_attentions=False):
+    def forward(self, input_dict, get_embeddings=args.get_embeddings, get_attentions=False):
 
         x = input_dict['input']
         x = self.backbone(x)
