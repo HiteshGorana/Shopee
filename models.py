@@ -58,7 +58,7 @@ class Backbone(nn.Module):
             self.out_features = self.net.head.fc.in_features
         elif 'csp' in name:
             self.out_features = self.net.head.fc.in_features
-        elif 'res' in name:  # works also for resnest
+        elif 'res' in name:
             self.out_features = self.net.fc.in_features
         elif 'efficientnet' in name:
             self.out_features = self.net.classifier.in_features
@@ -68,7 +68,8 @@ class Backbone(nn.Module):
             self.out_features = self.net.fc.in_features
         elif 'inception' in name:
             self.out_features = self.net.last_linear.in_features
-
+        elif 'nfnet' in name:
+            self.out_features = self.net.head.fc.in_features
         else:
             self.out_features = self.net.classifier.in_features
 
@@ -93,7 +94,6 @@ class Net(nn.Module):
 
         self.embedding_size = args.embedding_size
 
-        # https://www.groundai.com/project/arcface-additive-angular-margin-loss-for-deep-face-recognition
         if args.neck == "option-D":
             self.neck = nn.Sequential(
                 nn.Linear(self.backbone.out_features, self.embedding_size, bias=True),
@@ -118,7 +118,7 @@ class Net(nn.Module):
             self.load_state_dict(torch.load(args.pretrained_weights, map_location='cpu'), strict=False)
             print('weights loaded from', args.pretrained_weights)
 
-    def forward(self, input_dict, get_embeddings=args.get_embeddings, get_attentions=False):
+    def forward(self, input_dict, get_embeddings=args.get_embeddings):
 
         x = input_dict['input']
         x = self.backbone(x)
