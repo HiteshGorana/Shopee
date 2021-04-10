@@ -39,19 +39,21 @@ if __name__ == '__main__':
     for fold_number in range(args.folds):
         if fold_number in args.to_run_folds:
             data_train_ = Shopee(train[train['fold'] != fold_number].reset_index(drop=True), aug=args.train_args)
-            data = DataLoader(data_train_, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=args.num_workers)
-
+            data = DataLoader(data_train_, batch_size=args.batch_size, collate_fn=collate_fn,
+                              num_workers=args.num_workers)
             data_valid_ = Shopee(train[train['fold'] == fold_number].reset_index(drop=True), aug=args.test_args)
             data_valid = DataLoader(data_valid_, batch_size=args.batch_size_test, collate_fn=collate_fn,
                                     num_workers=args.num_workers)
 
             model = Net(args).to(args.device)
             optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-            scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, args.n_epochs - 1)
-            scheduler_warmup = GradualWarmupSchedulerV2(optimizer, multiplier=10, total_epoch=1,
-                                                        after_scheduler=scheduler_cosine)
-            for epoch in range(1, args.n_epochs):
-                scheduler_warmup.step(epoch - 1)
+            if args.scheduler:
+                scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, args.n_epochs - 1)
+                scheduler_warmup = GradualWarmupSchedulerV2(optimizer, multiplier=10, total_epoch=1,
+                                                            after_scheduler=scheduler_cosine)
+            for epoch in range(1, args.n_epochs + 1):
+                if args.scheduler:
+                    scheduler_warmup.step(epoch - 1)
                 _ = train_epoch(model, data, optimizer, loss_fn)
                 val_loss, embeddings = valid_epoch(model, data_valid, loss_fn)
                 print('#' * 22 + f' EPOCH : {epoch} ' + '#' * 22)

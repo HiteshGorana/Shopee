@@ -23,7 +23,7 @@ class args:
     DEBUG = False
     SEED = 22
     output = 'working'
-    train_fold = '../input/shopee-folds/train_fold.csv'
+    train_fold = '../input/shopee-folds-5/GroupKFold_train_folds.csv'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     get_embeddings = True
     batch_size = 32
@@ -32,6 +32,7 @@ class args:
     scale = 30
     margin = 0.5
     folds = 5
+    scheduler = False
     to_run_folds = [0]
     train_args = A.Compose([
         A.Resize(crop_size, crop_size, always_apply=True),
