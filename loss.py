@@ -14,7 +14,6 @@ class FocalLoss(nn.Module):
     def __init__(self, gamma=0, eps=1e-7):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
-        # print(self.gamma)
         self.eps = eps
         self.ce = torch.nn.CrossEntropyLoss(reduction="none")
 
@@ -26,7 +25,7 @@ class FocalLoss(nn.Module):
 
 
 class ArcFaceLoss(nn.modules.Module):
-    def __init__(self, s=45.0, m=0.1, crit="bce", weight=None, reduction="mean"):
+    def __init__(self, s=args.scale, m=args.margin, crit="bce", weight=None, reduction="mean"):
         super().__init__()
 
         self.weight = weight
@@ -86,9 +85,4 @@ class ArcFaceLoss(nn.modules.Module):
 def loss_fn(metric_crit, target_dict, output_dict):
     y_true = target_dict['target']
     y_pred = output_dict['logits']
-    # ignore invalid classes for val loss
-    mask = y_true < args.n_classes
-    if mask.sum() == 0:
-        return torch.zeros(1, device=y_pred.device)
-    loss = metric_crit(y_pred[mask], y_true[mask])
-    return loss
+    return metric_crit(y_pred, y_true)

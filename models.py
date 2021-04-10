@@ -19,8 +19,6 @@ class ArcMarginProduct(nn.Module):
 
     def reset_parameters(self):
         nn.init.xavier_uniform_(self.weight)
-        # stdv = 1. / math.sqrt(self.weight.size(1))
-        # self.weight.data.uniform_(-stdv, stdv)
 
     def forward(self, features):
         cosine = F.linear(F.normalize(features), F.normalize(self.weight))

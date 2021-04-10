@@ -10,7 +10,7 @@ import torch
 class args:
     neck = "option-D"
     pool = "gem"
-    backbone = 'tf_efficientnet_b3_ns'
+    backbone = 'tf_efficientnet_b4'
     p_trainable = False
     embedding_size = 512
     n_classes = 11014
@@ -29,8 +29,14 @@ class args:
     batch_size = 32
     batch_size_test = 32
     num_workers = 2
-    train_args = A.Compose([A.Resize(height=512, width=512, p=1.),
-                            A.RandomCrop(height=crop_size, width=crop_size, p=1.),
-                            A.HorizontalFlip(p=0.5),
-                            ])
-    test_args = A.Compose([A.Resize(height=512, width=512, p=1.), A.Resize(height=crop_size, width=crop_size, p=1.)])
+    scale = 30
+    margin = 0.5
+    folds = 5
+    to_run_folds = [0]
+    train_args = A.Compose([
+        A.Resize(crop_size, crop_size, always_apply=True),
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.Rotate(limit=120, p=0.8),
+        A.RandomBrightness(limit=(0.09, 0.6), p=0.5)])
+    test_args = A.Compose([A.Resize(crop_size, crop_size, always_apply=True)])
