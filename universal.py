@@ -3,32 +3,28 @@
 # @Author  : Hitesh Gorana
 # @Link    : None
 # @Version : 0.0
-import gc
 import math
 import os
 import warnings
-
+try:
+    from cuml.neighbors import NearestNeighbors
+except:
+    from sklearn.neighbors import NearestNeighbors
 import cv2
-import numpy as np
-import pandas as pd
 import timm
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import _LRScheduler
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from config import args
-
-try:
-    from cuml.neighbors import NearestNeighbors
-except:
-    from sklearn.neighbors import NearestNeighbors
 
 
 class ShopeeDataset(Dataset):
 
-    def __init__(self, data, root_dir=args.train_dir, transform=args.test_args, train=False):
+    def __init__(self, data, root_dir=args.train_dir, transform=args.train_args, train=True):
         self.data = data
         self.root_dir = root_dir
         self.transform = transform
@@ -153,6 +149,44 @@ class ShopeeModel(nn.Module):
         return x
 
 
+def train_fn(model, data_loader, optimizer, scheduler, epoch, device=args.device):
+    model.train()
+    fin_loss = 0.0
+    tk = tqdm(data_loader, desc="Training epoch: " + str(epoch + 1))
+
+    for t, data in enumerate(tk):
+        optimizer.zero_grad()
+        for k, v in data.items():
+            data[k] = v.to(device)
+
+        output = model(image=data['image'], label=data['label'], get_embedding=args.get_embeddings)
+        loss = torch.nn.CrossEntropyLoss()(output, data['label'])
+        loss.backward()
+        optimizer.step()
+        fin_loss += loss.item()
+
+        tk.set_postfix({'loss': '%.6f' % float(fin_loss / (t + 1)), 'LR': optimizer.param_groups[0]['lr']})
+
+    scheduler.step()
+    return fin_loss / len(data_loader)
+
+
+def eval_fn(model, data_loader, epoch, device=args.device):
+    model.eval()
+    fin_loss = 0.0
+    tk = tqdm(data_loader, desc="Validation epoch: " + str(epoch + 1))
+
+    with torch.no_grad():
+        for t, data in enumerate(tk):
+            for k, v in data.items():
+                data[k] = v.to(device)
+            output = model(image=data['image'], label=data['label'], get_embedding=args.get_embeddings)
+            loss = torch.nn.CrossEntropyLoss()(output, data['label'])
+            fin_loss += loss.item()
+            tk.set_postfix({'loss': '%.6f' % float(fin_loss / (t + 1))})
+        return fin_loss / len(data_loader)
+
+
 class ShopeeScheduler(_LRScheduler):
     def __init__(self, optimizer, lr_start=5e-6, lr_max=1e-5,
                  lr_min=1e-6, lr_ramp_ep=5, lr_sus_ep=0, lr_decay=0.4,
@@ -191,70 +225,3 @@ class ShopeeScheduler(_LRScheduler):
                   (self.last_epoch - self.lr_ramp_ep - self.lr_sus_ep) +
                   self.lr_min)
         return lr
-
-
-def get_image_neighbors(df, embeddings, threshold=args.threshold):
-    n_neighbors = args.n_neighbors_max if len(df) > 3 else args.n_neighbors_min
-    model_nearest_neighbors = NearestNeighbors(n_neighbors=n_neighbors)
-    model_nearest_neighbors.fit(embeddings)
-    distances, indices = model_nearest_neighbors.kneighbors(embeddings)
-    predictions = []
-    for k in range(embeddings.shape[0]):
-        idx = np.where(distances[k] < threshold)[0]
-        ids = indices[k, idx]
-        posting_ids = df['posting_id'].iloc[ids].values
-        predictions.append(posting_ids)
-    del model_nearest_neighbors, distances, indices
-    gc.collect()
-    return predictions
-
-
-def get_image_embeddings(net, image_loader):
-    net.eval()
-    embeds = []
-    with torch.no_grad():
-        for img in image_loader:
-            img = img.to(args.device)
-            features = net(img, None, args.get_embeddings)
-            image_embeddings = features.detach().cpu().numpy()
-            embeds.append(image_embeddings)
-    image_embeddings = np.concatenate(embeds)
-    print(f'Our image embeddings shape is {image_embeddings.shape}')
-    del embeds
-    gc.collect()
-    return image_embeddings
-
-
-def combine_for_cv(row):
-    x = np.concatenate([row.image_predictions])
-    return np.unique(x)
-
-
-def getMetric(col):
-    def f1score(row):
-        n = len(np.intersect1d(row.target, row[col]))
-        return 2 * n / (len(row.target) + len(row[col]))
-
-    return f1score
-
-
-if __name__ == '__main__':
-    FOLD_NUMBER = 0
-    args.pretrained_weights = False
-    args.model_path = ""
-    train = pd.read_csv(args.train_fold)
-    valid = train[train['fold'] == FOLD_NUMBER].reset_index(drop=True)
-    test_loader = ShopeeDataset(valid)
-    data = DataLoader(test_loader, batch_size=args.batch_size, num_workers=args.num_workers)
-    model = ShopeeModel(pretrained=args.pretrained_weights).to(args.device)
-    model.load_state_dict(torch.load(args.model_path))
-    embedding = get_image_embeddings(model, data)
-    np.save(f'{FOLD_NUMBER}_embedding', embedding)
-    image_predictions = get_image_neighbors(valid, embedding, threshold=args.threshold)
-    valid['image_predictions'] = image_predictions
-    tmp = valid.groupby('label_group').posting_id.agg('unique').to_dict()
-    valid['target'] = valid.label_group.map(tmp)
-    valid['oof'] = valid.apply(combine_for_cv, axis=1)
-    valid['f1'] = valid.apply(getMetric('oof'), axis=1)
-    print('CV Score =', valid.f1.mean())
-    valid.to_csv(f'oof_fold_{FOLD_NUMBER}.csv', index=False)
