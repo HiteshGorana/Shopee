@@ -72,3 +72,4 @@ class args:
     n_neighbors_min = 3
     threshold = 4.5
     model_path = ''
+    num_cores = 8
