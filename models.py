@@ -3,131 +3,112 @@
 # @Author  : Hitesh Gorana
 # @Link    : None
 # @Version : 0.0
+import math
+
 import timm
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.nn.parameter import Parameter
+
 from config import args
 
 
 class ArcMarginProduct(nn.Module):
-    def __init__(self, in_features, out_features):
-        super().__init__()
-        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.reset_parameters()
-
-    def reset_parameters(self):
+    def __init__(self, in_features, out_features, scale=30.0, margin=0.50, easy_margin=False, ls_eps=0.0):
+        super(ArcMarginProduct, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.scale = scale
+        self.margin = margin
+        self.ls_eps = ls_eps
+        self.weight = nn.Parameter(torch.FloatTensor(out_features, in_features))
         nn.init.xavier_uniform_(self.weight)
 
-    def forward(self, features):
-        cosine = F.linear(F.normalize(features), F.normalize(self.weight))
-        return cosine
+        self.easy_margin = easy_margin
+        self.cos_m = math.cos(margin)
+        self.sin_m = math.sin(margin)
+        self.th = math.cos(math.pi - margin)
+        self.mm = math.sin(math.pi - margin) * margin
 
-
-def gem(x, p=3, eps=1e-6):
-    return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(1. / p)
-
-
-class GeM(nn.Module):
-    def __init__(self, p=3, eps=1e-6, p_trainable=True):
-        super(GeM, self).__init__()
-        if p_trainable:
-            self.p = Parameter(torch.ones(1) * p)
+    def forward(self, input, label):
+        cosine = F.linear(F.normalize(input), F.normalize(self.weight))
+        sine = torch.sqrt(1.0 - torch.pow(cosine, 2))
+        phi = cosine * self.cos_m - sine * self.sin_m
+        if self.easy_margin:
+            phi = torch.where(cosine > 0, phi, cosine)
         else:
-            self.p = p
-        self.eps = eps
+            phi = torch.where(cosine > self.th, phi, cosine - self.mm)
 
-    def forward(self, x):
-        return gem(x, p=self.p, eps=self.eps)
+        one_hot = torch.zeros(cosine.size(), device=args.device)
+        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+        if self.ls_eps > 0:
+            one_hot = (1 - self.ls_eps) * one_hot + self.ls_eps / self.out_features
 
-    def __repr__(self):
-        return self.__class__.__name__ + '(' + 'p=' + '{:.4f}'.format(self.p.data.tolist()[0]) + ', ' + 'eps=' + str(
-            self.eps) + ')'
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        output *= self.scale
+
+        return output
 
 
-class Backbone(nn.Module):
+class ShopeeModel(nn.Module):
 
-    def __init__(self, name='resnet18', pretrained=True):
-        super(Backbone, self).__init__()
-        self.net = timm.create_model(name, pretrained=pretrained)
+    def __init__(
+            self,
+            n_classes=args.n_classes,
+            model_name=args.backbone,
+            fc_dim=args.embedding_size,
+            margin=args.margin,
+            scale=args.scale,
+            use_fc=True,
+            pretrained=True):
 
-        if 'regnet' in name:
-            self.out_features = self.net.head.fc.in_features
-        elif 'csp' in name:
-            self.out_features = self.net.head.fc.in_features
-        elif 'res' in name:
-            self.out_features = self.net.fc.in_features
-        elif 'efficientnet' in name:
-            self.out_features = self.net.classifier.in_features
-        elif 'densenet' in name:
-            self.out_features = self.net.classifier.in_features
-        elif 'senet' in name:
-            self.out_features = self.net.fc.in_features
-        elif 'inception' in name:
-            self.out_features = self.net.last_linear.in_features
-        elif 'nfnet' in name:
-            self.out_features = self.net.head.fc.in_features
+        super(ShopeeModel, self).__init__()
+        print('Building Model Backbone for {} model'.format(model_name))
+
+        self.backbone = timm.create_model(model_name, pretrained=pretrained)
+        in_features = self.backbone.classifier.in_features
+        self.backbone.classifier = nn.Identity()
+        self.backbone.global_pool = nn.Identity()
+        self.pooling = nn.AdaptiveAvgPool2d(1)
+        self.use_fc = use_fc
+
+        if use_fc:
+            self.dropout = nn.Dropout(p=0.1)
+            self.classifier = nn.Linear(in_features, fc_dim)
+            self.bn = nn.BatchNorm1d(fc_dim)
+            self._init_params()
+            in_features = fc_dim
+
+        self.final = ArcMarginProduct(
+            in_features,
+            n_classes,
+            scale=scale,
+            margin=margin,
+            easy_margin=False,
+            ls_eps=0.0
+        )
+
+    def _init_params(self):
+        nn.init.xavier_normal_(self.classifier.weight)
+        nn.init.constant_(self.classifier.bias, 0)
+        nn.init.constant_(self.bn.weight, 1)
+        nn.init.constant_(self.bn.bias, 0)
+
+    def forward(self, image, label, get_embedding=False):
+        features = self.extract_features(image)
+        if get_embedding:
+            return features
         else:
-            self.out_features = self.net.classifier.in_features
+            logits = self.final(features, label)
+            return logits
 
-    def forward(self, x):
-        x = self.net.forward_features(x)
-        return x
-
-
-class Net(nn.Module):
-    def __init__(self, args, pretrained=True):
-        super(Net, self).__init__()
-
-        self.args = args
-        self.backbone = Backbone(args.backbone, pretrained=pretrained)
-
-        if args.pool == "gem":
-            self.global_pool = GeM(p_trainable=args.p_trainable)
-        elif args.pool == "identity":
-            self.global_pool = torch.nn.Identity()
-        else:
-            self.global_pool = nn.AdaptiveAvgPool2d(1)
-
-        self.embedding_size = args.embedding_size
-
-        if args.neck == "option-D":
-            self.neck = nn.Sequential(
-                nn.Linear(self.backbone.out_features, self.embedding_size, bias=True),
-                nn.BatchNorm1d(self.embedding_size),
-                torch.nn.PReLU()
-            )
-        elif args.neck == "option-F":
-            self.neck = nn.Sequential(
-                nn.Dropout(0.3),
-                nn.Linear(self.backbone.out_features, self.embedding_size, bias=True),
-                nn.BatchNorm1d(self.embedding_size),
-                torch.nn.PReLU()
-            )
-        else:
-            self.neck = nn.Sequential(
-                nn.Linear(self.backbone.out_features, self.embedding_size, bias=False),
-                nn.BatchNorm1d(self.embedding_size),
-            )
-        self.head = ArcMarginProduct(self.embedding_size, args.n_classes)
-
-        if args.pretrained_weights is not None:
-            self.load_state_dict(torch.load(args.pretrained_weights, map_location='cpu'), strict=False)
-            print('weights loaded from', args.pretrained_weights)
-
-    def forward(self, input_dict, get_embeddings=args.get_embeddings):
-
-        x = input_dict['input']
+    def extract_features(self, x):
+        batch_size = x.shape[0]
         x = self.backbone(x)
-        x = self.global_pool(x)
-        x = x[:, :, 0, 0]
+        x = self.pooling(x).view(batch_size, -1)
 
-        x = self.neck(x)
-
-        logits = self.head(x)
-
-        if get_embeddings:
-            return {'logits': logits, 'embeddings': x}
-        else:
-            return {'logits': logits}
+        if self.use_fc and self.training:
+            x = self.dropout(x)
+            x = self.classifier(x)
+            x = self.bn(x)
+        return x
