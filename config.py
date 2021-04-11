@@ -55,7 +55,7 @@ class args:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     get_embeddings = False
     batch_size = 32
-    batch_size_test = 32
+    batch_size_test = batch_size * 2
     num_workers = 2
     scale = 30
     margin = 0.5
@@ -68,7 +68,7 @@ class args:
     train_args = get_train_transforms(crop_size)
     test_args = get_valid_transforms(crop_size)
 
-    model_path = ''
     n_neighbors_max = 50
     n_neighbors_min = 3
     threshold = 4.5
+    model_path = ''
