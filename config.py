@@ -35,9 +35,7 @@ def get_valid_transforms(img_size=512):
 
 
 class args:
-    neck = "option-D"
-    pool = "gem"
-    backbone = 'tf_efficientnet_b4'
+    backbone = 'tf_efficientnet_b0'
     embedding_size = 512
     arcface_s = 45
     n_classes = 11014

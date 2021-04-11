@@ -20,6 +20,7 @@ from models import ShopeeModel
 from data import ShopeeDataset
 
 args.pretrained_weights = False
+args.get_embeddings = True
 
 
 def get_image_neighbors(df, embeddings, threshold=args.threshold):
@@ -42,10 +43,9 @@ def get_image_embeddings(net, image_loader):
     net.eval()
     embeds = []
     with torch.no_grad():
-        for img, label in image_loader:
-            img = img.cuda()
-            label = label.cuda()
-            features = net(img, label, args.get_embeddings)
+        for img in image_loader:
+            img = img.to(args.device)
+            features = net(img, None, args.get_embeddings)
             image_embeddings = features.detach().cpu().numpy()
             embeds.append(image_embeddings)
     image_embeddings = np.concatenate(embeds)
@@ -53,6 +53,11 @@ def get_image_embeddings(net, image_loader):
     del embeds
     gc.collect()
     return image_embeddings
+
+
+def combine_predictions(row):
+    x = np.concatenate([row['image_predictions']])
+    return ' '.join(np.unique(x))
 
 
 if __name__ == '__main__':
@@ -64,4 +69,5 @@ if __name__ == '__main__':
     embedding = get_image_embeddings(model, data)
     image_predictions = get_image_neighbors(test, embedding)
     test['image_predictions'] = image_predictions
+    test['matches'] = test.apply(combine_predictions, axis=1)
     test[['posting_id', 'matches']].to_csv('submission.csv', index=False)
