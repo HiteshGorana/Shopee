@@ -95,19 +95,19 @@ class ShopeeModel(nn.Module):
         nn.init.constant_(self.bn.bias, 0)
 
     def forward(self, image, label, get_embedding=False):
-        features = self.extract_features(image)
+        features = self.extract_features(image, get_embedding=get_embedding)
         if get_embedding:
             return features
         else:
             logits = self.final(features, label)
             return logits
 
-    def extract_features(self, x):
+    def extract_features(self, x, get_embedding):
         batch_size = x.shape[0]
         x = self.backbone(x)
         x = self.pooling(x).view(batch_size, -1)
 
-        if self.use_fc and self.training:
+        if self.use_fc and not get_embedding:
             x = self.dropout(x)
             x = self.classifier(x)
             x = self.bn(x)

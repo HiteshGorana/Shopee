@@ -53,17 +53,16 @@ if __name__ == '__main__':
                 scheduler = None
 
             for epoch in range(args.n_epochs):
-                mname = f'epoch{epoch}_arcface_{args.crop_size}x' \
-                        f'{args.crop_size}_{args.backbone}' \
-                        f'fold_{fold_number}.pt'
+                model_dir = f'epoch{epoch}_arcface_{args.crop_size}x' \
+                            f'{args.crop_size}_{args.backbone}' \
+                            f'fold_{fold_number}.pt'
                 avg_loss_train = train_fn(model, data, optimizer, scheduler, epoch, args.device)
                 avg_loss_valid = eval_fn(model, data_valid, epoch)
-                torch.save(model.state_dict(), args.output + mname)
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'scheduler': scheduler.state_dict()
-                },
-                    args.output + 'checkpoints_' +mname
+                print(
+                    f'TRAIN LOSS : {avg_loss_train}  VALIDATION LOSS : {avg_loss_valid}'
                 )
+                torch.save(model.state_dict(), args.output + model_dir)
+                torch.save(dict(epoch=epoch, model_state_dict=model.state_dict(),
+                                optimizer=optimizer.state_dict(),scheduler=scheduler.state_dict()),
+                           args.output + 'checkpoints_' + model_dir
+                           )
