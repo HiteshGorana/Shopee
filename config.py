@@ -38,7 +38,6 @@ class args:
     neck = "option-D"
     pool = "gem"
     backbone = 'tf_efficientnet_b4'
-    p_trainable = False
     embedding_size = 512
     arcface_s = 45
     n_classes = 11014
@@ -51,8 +50,10 @@ class args:
     DEBUG = False
     SEED = 22
     output = '../working/'
-    train_dir = ''
+    train_dir = '../input/shopee-product-matching/train_images'
+    test_dir = '../input/shopee-product-matching/test_images'
     train_fold = '../input/shopee-folds-5/GroupKFold_train_folds.csv'
+    test_data = '../input/shopee-product-matching/test.csv'
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     get_embeddings = False
     batch_size = 32
@@ -68,3 +69,8 @@ class args:
                             lr_decay=0.8)
     train_args = get_train_transforms(crop_size)
     test_args = get_valid_transforms(crop_size)
+
+    model_path = ''
+    n_neighbors_max = 50
+    n_neighbors_min = 3
+    threshold = 4.5
